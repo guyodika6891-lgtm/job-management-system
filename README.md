@@ -62,6 +62,20 @@ npm run dev
 
 The frontend defaults to the API at `http://127.0.0.1:8000`. Set `VITE_API_URL` in `frontend\.env` to override it.
 
+## Deploy to Render and Neon
+
+The root `render.yaml` defines a Render web service for the FastAPI backend and a static site for the React frontend. PostgreSQL is hosted separately on Neon.
+
+1. Create a PostgreSQL project on [Neon](https://neon.tech/) and copy its pooled connection string. Keep the SSL option (`sslmode=require`) in the URL.
+2. In [Render](https://render.com/), choose **New → Blueprint**, connect this GitHub repository, and deploy the Blueprint from the `main` branch.
+3. When prompted for `DATABASE_URL`, paste the Neon connection string. Render generates `SECRET_KEY` and `ADMIN_REGISTRATION_CODE` for the backend. Keep the registration code private.
+4. After the services are created, open the backend service's **Settings** and copy its public URL. Set the frontend service's `VITE_API_URL` environment variable to that URL (for example, `https://jobconnect-api.onrender.com`), then trigger a new deploy of the frontend.
+5. Copy the frontend's public URL. In the backend service's environment, set `CORS_ORIGINS` to that exact URL (for example, `https://jobconnect-frontend.onrender.com`), then redeploy the backend.
+6. Confirm the backend health check at `<backend-url>/api/health/db`, then open the frontend URL and register the first administrator using the generated registration code.
+7. Once the administrator is registered, remove `ADMIN_REGISTRATION_CODE` from the backend environment and redeploy.
+
+The API service runs database migrations at startup. The frontend's static-site rewrite supports client-side routes such as `/login` and `/admin`. Free Render services may spin down after inactivity, so their first request can take longer while they start.
+
 ## Main workflows
 
 - Public visitors can browse, search, and filter open jobs by keyword, location, company, and salary.
