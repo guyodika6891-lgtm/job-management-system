@@ -30,6 +30,9 @@ class Application(Base):
     status: Mapped[str] = mapped_column(
         String(20), default="pending", nullable=False
     )
+    source: Mapped[str] = mapped_column(
+        String(20), default="other", nullable=False
+    )
     resume_filename: Mapped[str | None] = mapped_column(String(255), nullable=True)
     resume_content_type: Mapped[str | None] = mapped_column(String(100), nullable=True)
     resume_data: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)

@@ -16,6 +16,10 @@ services:
         generateValue: true
       - key: CORS_ORIGINS
         sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: FRONTEND_URL
+        sync: false
 
   - type: web
     name: jobconnect-frontend
@@ -29,4 +33,6 @@ services:
         destination: /index.html
     envVars:
       - key: VITE_API_URL
+        sync: false
+      - key: VITE_GOOGLE_CLIENT_ID
         sync: false

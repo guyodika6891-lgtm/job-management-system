@@ -28,6 +28,7 @@ class ApplicationResponse(BaseModel):
     job_id: int
     applicant_id: int
     status: str
+    source: str
     applied_at: datetime
     resume_filename: str | None
     job: ApplicationJobSummary

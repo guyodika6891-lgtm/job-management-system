@@ -1,7 +1,8 @@
 from pathlib import PurePath
+from typing import Literal
 from urllib.parse import quote
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from fastapi.responses import Response
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -58,6 +59,9 @@ async def read_resume(resume: UploadFile | None) -> tuple[str | None, str | None
 async def apply_to_job(
     job_id: int,
     resume: UploadFile | None = File(default=None),
+    source: Literal["job_board", "social_media", "referral", "other"] = Form(
+        default="other"
+    ),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -90,6 +94,7 @@ async def apply_to_job(
     application = Application(
         job_id=job_id,
         applicant_id=current_user.id,
+        source=source,
         resume_filename=filename,
         resume_content_type=content_type,
         resume_data=resume_data,

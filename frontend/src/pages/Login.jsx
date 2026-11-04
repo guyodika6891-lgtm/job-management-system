@@ -1,30 +1,31 @@
-
 import { useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
-import SiteHeader from '../components/SiteHeader'
+import GoogleSignInButton from '../components/GoogleSignInButton'
 import { useAuth } from '../context/useAuth'
 
+function destinationFor(role) {
+  if (role === 'admin') return '/admin'
+  return role === 'employer' ? '/employer' : '/job-seeker'
+}
+
 function Login() {
-  const { login } = useAuth()
+  const { login, loginWithGoogle } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
-
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [rememberMe, setRememberMe] = useState(false)
   const [message, setMessage] = useState(
     location.state?.registered ? 'Registration successful. You can now log in.' : '',
   )
   const [loading, setLoading] = useState(false)
 
-  async function handleSubmit(event) {
-    event.preventDefault()
+  async function completeLogin(authenticate) {
     setMessage('')
     setLoading(true)
-
     try {
-      const loggedInUser = await login(email, password)
-
-      navigate(loggedInUser.role === 'employer' ? '/employer' : '/job-seeker', { replace: true })
+      const loggedInUser = await authenticate()
+      navigate(destinationFor(loggedInUser.role), { replace: true })
     } catch (error) {
       setMessage(error.message)
     } finally {
@@ -32,66 +33,105 @@ function Login() {
     }
   }
 
+  function handleSubmit(event) {
+    event.preventDefault()
+    return completeLogin(() => login(email, password, rememberMe))
+  }
+
+  function handleGoogleCredential(credential) {
+    return completeLogin(() => loginWithGoogle(credential, rememberMe))
+  }
+
   return (
-    <div className="app">
-      <SiteHeader />
-      <main className="auth-container login-container">
-       <div className="login-layout">
-        <aside className="login-welcome">
-          <div className="login-welcome-content">
-            <span className="login-mark" aria-hidden="true">J</span>
-            <p className="login-kicker">WELCOME TO JOBCONNECT</p>
-            <h1>Your next chapter<br />starts here.</h1>
-            <p className="login-welcome-copy">A calmer, clearer way to find the work you want—or the people you need.</p>
-            <div className="login-benefits">
-              <span><i aria-hidden="true">✓</i> Opportunities worth your time</span>
-              <span><i aria-hidden="true">✓</i> Every application in one place</span>
-              <span><i aria-hidden="true">✓</i> A direct connection to employers</span>
+    <div className="app auth-page">
+      <main className="auth-container login-container auth-screen">
+        <div className="login-layout auth-layout">
+          <section className="auth-promo" aria-label="Find your next opportunity">
+            <div className="auth-promo-header">
+              <span className="auth-brand-mark" aria-hidden="true">J</span>
+              <span>JobConnect</span>
             </div>
-          </div>
-          <span className="login-decoration login-decoration-one" aria-hidden="true" />
-          <span className="login-decoration login-decoration-two" aria-hidden="true" />
-          <p className="login-aside-footer">Make your next move count.</p>
-        </aside>
+            <div className="auth-promo-copy">
+              <p>Find Your Dream Job</p>
+              <h1>Join quality teams<br />and get hired</h1>
+              <div className="auth-illustration" aria-hidden="true">
+                <span className="illustration-float illustration-crown">♛</span>
+                <span className="illustration-float illustration-cloud">☁</span>
+                <span className="illustration-float illustration-monitor">▣</span>
+                <span className="illustration-float illustration-shield">⬟</span>
+                <div className="illustration-photo">
+                  <span>🤝</span>
+                  <strong>People. Potential.<br />Possibilities.</strong>
+                </div>
+                <span className="illustration-float illustration-spark">✦</span>
+                <span className="illustration-float illustration-folder">▰</span>
+              </div>
+              <p className="auth-promo-caption">
+                Discover roles that fit your ambitions, meet great people, and keep your next move on track.
+              </p>
+            </div>
+          </section>
 
-        <form className="auth-form login-form" onSubmit={handleSubmit}>
-          <p className="eyebrow">YOUR CAREER SPACE</p>
-          <h2>Welcome back</h2>
-          <p className="login-form-copy">Sign in to pick up where you left off.</p>
+          <section className="auth-panel">
+            <div className="auth-panel-content">
+              <p className="auth-panel-kicker">WELCOME BACK</p>
+              <h2>Login</h2>
+              <p className="login-form-copy">Log in to your account and start searching for your dream job.</p>
 
-          <label htmlFor="login-email">Email address</label>
-          <input
-            id="login-email"
-            type="email"
-            autoComplete="email"
-            value={email}
-            onChange={(event) => setEmail(event.target.value)}
-            placeholder="you@example.com"
-            required
-          />
+              <GoogleSignInButton
+                onCredential={handleGoogleCredential}
+                onError={setMessage}
+                disabled={loading}
+              />
+              <div className="auth-divider"><span>or continue with email</span></div>
 
-          <label htmlFor="login-password">Password</label>
-          <input
-            id="login-password"
-            type="password"
-            autoComplete="current-password"
-            value={password}
-            onChange={(event) => setPassword(event.target.value)}
-            placeholder="Enter your password"
-            required
-          />
+              <form className="auth-form login-form auth-credentials-form" onSubmit={handleSubmit}>
+                <label htmlFor="login-email">Email address</label>
+                <input
+                  id="login-email"
+                  type="email"
+                  autoComplete="email"
+                  value={email}
+                  onChange={(event) => setEmail(event.target.value)}
+                  placeholder="you@example.com"
+                  required
+                />
 
-          <button className="button button-primary" type="submit" disabled={loading}>
-            {loading ? 'Signing in…' : 'Sign in'} <span aria-hidden="true">→</span>
-          </button>
+                <label htmlFor="login-password">Password</label>
+                <input
+                  id="login-password"
+                  type="password"
+                  autoComplete="current-password"
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  placeholder="Enter your password"
+                  required
+                />
 
-          {message && <p className="auth-message" role="status">{message}</p>}
+                <div className="auth-form-options">
+                  <label className="remember-option">
+                    <input
+                      type="checkbox"
+                      checked={rememberMe}
+                      onChange={(event) => setRememberMe(event.target.checked)}
+                    />
+                    <span>Remember me</span>
+                  </label>
+                  <Link to="/forgot-password">Forgot password?</Link>
+                </div>
 
-          <p className="login-register-prompt">
-            New to JobConnect? <Link to="/register">Create an account</Link>
-          </p>
-        </form>
-       </div>
+                <button className="button button-primary" type="submit" disabled={loading}>
+                  {loading ? 'Signing in…' : 'Login'} <span aria-hidden="true">→</span>
+                </button>
+                {message && <p className="auth-message" role="alert">{message}</p>}
+              </form>
+
+              <p className="login-register-prompt">
+                Don’t have an account? <Link to="/register">Sign up</Link>
+              </p>
+            </div>
+          </section>
+        </div>
       </main>
     </div>
   )

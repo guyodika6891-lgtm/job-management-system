@@ -6,6 +6,32 @@ import SaveJobButton from '../components/SaveJobButton'
 import { apiRequest } from '../api'
 import { useAuth } from '../context/useAuth'
 
+function getApplicationSource() {
+  const params = new URLSearchParams(window.location.search)
+  const campaign = `${params.get('utm_source') || ''} ${params.get('utm_medium') || ''} ${params.get('source') || ''}`.toLowerCase()
+  if (campaign.includes('social') || /linkedin|facebook|instagram|tiktok|twitter|x\.com/.test(campaign)) {
+    return 'social_media'
+  }
+  if (/indeed|glassdoor|ziprecruiter|monster|job.?board/.test(campaign)) {
+    return 'job_board'
+  }
+  if (campaign.includes('referral')) return 'referral'
+
+  if (document.referrer) {
+    const referrer = new URL(document.referrer)
+    if (referrer.origin !== window.location.origin) {
+      if (/linkedin|facebook|instagram|tiktok|twitter|x\.com/.test(referrer.hostname)) {
+        return 'social_media'
+      }
+      if (/indeed|glassdoor|ziprecruiter|monster/.test(referrer.hostname)) {
+        return 'job_board'
+      }
+      return 'referral'
+    }
+  }
+  return 'other'
+}
+
 function JobDetail() {
   const { jobId } = useParams()
   const { user, token } = useAuth()
@@ -63,6 +89,7 @@ function JobDetail() {
     try {
       const body = new FormData()
       if (resume) body.append('resume', resume)
+      body.append('source', getApplicationSource())
       const created = await apiRequest(`/api/applications/jobs/${job.id}`, {
         method: 'POST',
         token,

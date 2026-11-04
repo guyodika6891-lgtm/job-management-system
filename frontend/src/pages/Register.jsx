@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import SiteHeader from '../components/SiteHeader'
-import SiteFooter from '../components/SiteFooter'
+import GoogleSignInButton from '../components/GoogleSignInButton'
 import { apiRequest } from '../api'
+import { useAuth } from '../context/useAuth'
 
 function Register() {
   const navigate = useNavigate()
+  const { loginWithGoogle } = useAuth()
   const [registrationStatus, setRegistrationStatus] = useState(null)
   const [statusError, setStatusError] = useState('')
   const [retryCount, setRetryCount] = useState(0)
@@ -22,7 +23,6 @@ function Register() {
 
   useEffect(() => {
     let active = true
-
     apiRequest('/api/auth/registration-status')
       .then((data) => {
         if (active) setRegistrationStatus(data)
@@ -30,7 +30,6 @@ function Register() {
       .catch((error) => {
         if (active) setStatusError(error.message)
       })
-
     return () => {
       active = false
     }
@@ -47,15 +46,12 @@ function Register() {
     event.preventDefault()
     setMessage('')
     setLoading(true)
-
     try {
       await apiRequest('/api/auth/register', {
         method: 'POST',
         body: JSON.stringify({
           ...formData,
-          company_name: formData.role === 'employer'
-            ? formData.company_name.trim()
-            : null,
+          company_name: formData.role === 'employer' ? formData.company_name.trim() : null,
           admin_registration_code: formData.role === 'admin'
             ? formData.admin_registration_code
             : null,
@@ -69,38 +65,70 @@ function Register() {
     }
   }
 
+  async function handleGoogleCredential(credential) {
+    setMessage('')
+    setLoading(true)
+    try {
+      const loggedInUser = await loginWithGoogle(credential)
+      const destination = loggedInUser.role === 'admin'
+        ? '/admin'
+        : loggedInUser.role === 'employer'
+          ? '/employer'
+          : '/job-seeker'
+      navigate(destination, { replace: true })
+    } catch (error) {
+      setMessage(error.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
   const setupAvailable = registrationStatus?.admin_setup_available
   const adminExists = registrationStatus?.admin_exists
 
   return (
-    <div className="app">
-      <SiteHeader />
-      <main className="auth-container login-container register-container">
-        <div className="login-layout register-layout">
-          <aside className="login-welcome register-welcome">
-            <div className="login-welcome-content">
-              <span className="login-mark" aria-hidden="true">J</span>
-              <p className="login-kicker">MAKE YOUR NEXT MOVE</p>
-              <h1>Good work<br />starts here.</h1>
-              <p className="login-welcome-copy">
-                Create an account to find opportunities or bring great people to your team.
-              </p>
-              <div className="login-benefits">
-                <span><i aria-hidden="true">✓</i> Build a focused job search</span>
-                <span><i aria-hidden="true">✓</i> Track every application</span>
-                <span><i aria-hidden="true">✓</i> Connect with employers and candidates</span>
-              </div>
+    <div className="app auth-page">
+      <main className="auth-container login-container auth-screen">
+        <div className="login-layout auth-layout">
+          <section className="auth-promo" aria-label="Create your JobConnect account">
+            <div className="auth-promo-header">
+              <span className="auth-brand-mark" aria-hidden="true">J</span>
+              <span>JobConnect</span>
             </div>
-            <span className="login-decoration login-decoration-one" aria-hidden="true" />
-            <span className="login-decoration login-decoration-two" aria-hidden="true" />
-            <p className="login-aside-footer">Your next chapter is yours to write.</p>
-          </aside>
+            <div className="auth-promo-copy">
+              <p>Find Your Dream Job</p>
+              <h1>Join quality teams<br />and get hired</h1>
+              <div className="auth-illustration" aria-hidden="true">
+                <span className="illustration-float illustration-crown">♛</span>
+                <span className="illustration-float illustration-cloud">☁</span>
+                <span className="illustration-float illustration-monitor">▣</span>
+                <span className="illustration-float illustration-shield">⬟</span>
+                <div className="illustration-photo">
+                  <span>🤝</span>
+                  <strong>People. Potential.<br />Possibilities.</strong>
+                </div>
+                <span className="illustration-float illustration-spark">✦</span>
+                <span className="illustration-float illustration-folder">▰</span>
+              </div>
+              <p className="auth-promo-caption">
+                Create a free account to discover opportunities, connect with employers, and manage your applications.
+              </p>
+            </div>
+          </section>
 
-          <section className="auth-form login-form register-form" aria-live="polite">
-              <form onSubmit={handleSubmit}>
-                <p className="eyebrow">START FOR FREE</p>
-                <h2>Create your account</h2>
-                <p className="login-form-copy">Choose how you’ll use JobConnect.</p>
+          <section className="auth-panel register-auth-panel">
+            <div className="auth-panel-content">
+              <p className="auth-panel-kicker">GET STARTED FOR FREE</p>
+              <h2>Sign up</h2>
+              <p className="login-form-copy">Create an account to find opportunities or build your team.</p>
+              <GoogleSignInButton
+                onCredential={handleGoogleCredential}
+                onError={setMessage}
+                disabled={loading}
+              />
+              <div className="auth-divider"><span>or sign up with email</span></div>
+
+              <form className="auth-form login-form register-form auth-credentials-form" onSubmit={handleSubmit}>
                 <label htmlFor="full_name">Full name</label>
                 <input
                   id="full_name"
@@ -112,6 +140,7 @@ function Register() {
                   required
                   minLength={2}
                   maxLength={150}
+                  autoComplete="name"
                 />
 
                 <label htmlFor="email">Email address</label>
@@ -123,6 +152,7 @@ function Register() {
                   onChange={handleChange}
                   placeholder="Enter your email"
                   required
+                  autoComplete="email"
                 />
 
                 <label htmlFor="password">Password</label>
@@ -140,12 +170,7 @@ function Register() {
                 />
 
                 <label htmlFor="role">I’m here to</label>
-                <select
-                  id="role"
-                  name="role"
-                  value={formData.role}
-                  onChange={handleChange}
-                >
+                <select id="role" name="role" value={formData.role} onChange={handleChange}>
                   <option value="job_seeker">Job seeker</option>
                   <option value="employer">Employer</option>
                   {setupAvailable && <option value="admin">System administrator</option>}
@@ -206,7 +231,6 @@ function Register() {
                 <button className="button button-primary" type="submit" disabled={loading}>
                   {loading ? 'Creating account…' : 'Create account'} <span aria-hidden="true">→</span>
                 </button>
-
                 {message && <p className="auth-message" role="alert">{message}</p>}
                 {adminExists && (
                   <p className="registration-managed-notice">
@@ -218,14 +242,15 @@ function Register() {
                     Job seeker and employer accounts can register now. Admin setup is not currently configured.
                   </p>
                 )}
-                <p className="login-register-prompt">
-                  Already have an account? <Link to="/login">Sign in</Link>
-                </p>
               </form>
+
+              <p className="login-register-prompt">
+                Already have an account? <Link to="/login">Login</Link>
+              </p>
+            </div>
           </section>
         </div>
       </main>
-      <SiteFooter />
     </div>
   )
 }

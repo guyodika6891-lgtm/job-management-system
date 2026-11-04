@@ -15,6 +15,7 @@ import EmployerDashboard from './pages/EmployerDashboard'
 import AdminDashboard from './pages/AdminDashboard'
 import JobDetail from './pages/JobDetail'
 import Login from './pages/Login'
+import PasswordReset from './pages/PasswordReset'
 import Register from './pages/Register'
 
 function HomePage() {
@@ -294,6 +295,8 @@ function App() {
         <Route path="/jobs/:jobId" element={<JobDetail />} />
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
+        <Route path="/forgot-password" element={<PasswordReset />} />
+        <Route path="/reset-password" element={<PasswordReset />} />
         <Route
           path="/employer"
           element={

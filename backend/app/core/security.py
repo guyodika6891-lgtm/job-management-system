@@ -42,3 +42,24 @@ def hash_password(password: str) -> str:
 def verify_password(password: str, hashed_password: str) -> bool:
     """Check whether a password matches its stored hash."""
     return password_hash.verify(password, hashed_password)
+
+
+def create_password_reset_token(user_id: int, version: int) -> str:
+    expires_at = datetime.now(timezone.utc) + timedelta(minutes=30)
+    return jwt.encode(
+        {
+            "sub": str(user_id),
+            "purpose": "password_reset",
+            "version": version,
+            "exp": expires_at,
+        },
+        SECRET_KEY,
+        algorithm=ALGORITHM,
+    )
+
+
+def decode_password_reset_token(token: str) -> dict:
+    payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+    if payload.get("purpose") != "password_reset":
+        raise jwt.InvalidTokenError("Invalid password reset token.")
+    return payload

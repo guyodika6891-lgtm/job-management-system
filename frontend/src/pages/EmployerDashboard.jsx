@@ -6,6 +6,58 @@ import InterviewPanel from '../components/InterviewPanel'
 import { apiRequest, downloadFile } from '../api'
 import { useAuth } from '../context/useAuth'
 
+function getApplicationTrend(applications, range, now) {
+  const slots = range === 'today'
+    ? Array.from({ length: 8 }, (_, index) => ({
+      key: String(index),
+      label: `${(index * 3) % 12 || 12}${index < 4 ? 'a' : 'p'}`,
+      date: null,
+    }))
+    : range === 'week'
+      ? Array.from({ length: 7 }, (_, index) => {
+        const date = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 6 + index)
+        return {
+          key: `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`,
+          label: date.toLocaleDateString(undefined, { weekday: 'short' }),
+          date,
+        }
+      })
+      : Array.from({ length: 12 }, (_, index) => {
+        const date = new Date(now.getFullYear(), now.getMonth() - 11 + index, 1)
+        return {
+          key: `${date.getFullYear()}-${date.getMonth()}`,
+          label: date.toLocaleDateString(undefined, { month: 'short' }),
+          date,
+        }
+      })
+
+  return slots.map((slot, index) => {
+    const matchesSlot = (application) => {
+      const appliedAt = new Date(application.applied_at)
+      if (Number.isNaN(appliedAt.getTime())) return false
+      if (range === 'today') {
+        return appliedAt.getFullYear() === now.getFullYear()
+          && appliedAt.getMonth() === now.getMonth()
+          && appliedAt.getDate() === now.getDate()
+          && Math.floor(appliedAt.getHours() / 3) === index
+      }
+      if (range === 'week') {
+        return appliedAt.getFullYear() === slot.date.getFullYear()
+          && appliedAt.getMonth() === slot.date.getMonth()
+          && appliedAt.getDate() === slot.date.getDate()
+      }
+      return appliedAt.getFullYear() === slot.date.getFullYear()
+        && appliedAt.getMonth() === slot.date.getMonth()
+    }
+    const matchingApplications = applications.filter(matchesSlot)
+    return {
+      ...slot,
+      applications: matchingApplications.length,
+      shortlisted: matchingApplications.filter((application) => application.status === 'accepted').length,
+    }
+  })
+}
+
 function EmployerDashboard() {
   const { user, token, logout } = useAuth()
   const [jobs, setJobs] = useState([])
@@ -14,13 +66,27 @@ function EmployerDashboard() {
   const [interviews, setInterviews] = useState([])
   const [searchQuery, setSearchQuery] = useState('')
   const [applicationFilter, setApplicationFilter] = useState('all')
+  const [trendRange, setTrendRange] = useState('month')
   const [activeSection, setActiveSection] = useState('overview')
   const [loading, setLoading] = useState(true)
   const [interviewsLoading, setInterviewsLoading] = useState(true)
   const [error, setError] = useState('')
   const [updatingId, setUpdatingId] = useState(null)
   const [dashboardDate] = useState(() => new Date())
+  const [newTodo, setNewTodo] = useState('')
+  const [todos, setTodos] = useState(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(`jobconnect-employer-todos-${user?.id}`) || '[]')
+      return Array.isArray(saved) ? saved : []
+    } catch {
+      return []
+    }
+  })
   const candidateSearchRef = useRef(null)
+
+  useEffect(() => {
+    localStorage.setItem(`jobconnect-employer-todos-${user?.id}`, JSON.stringify(todos))
+  }, [todos, user?.id])
 
   useEffect(() => {
     let active = true
@@ -110,7 +176,22 @@ function EmployerDashboard() {
   const openJobs = jobs.filter((job) => job.status === 'open').length
   const pendingApplications = applications.filter((application) => application.status === 'pending').length
   const acceptedApplications = applications.filter((application) => application.status === 'accepted').length
+  const shortlistedCount = applications.filter((application) => application.status === 'accepted').length
   const maxApplications = Math.max(...(analytics?.jobs || []).map((job) => job.applications), 1)
+  const applicationTrend = getApplicationTrend(applications, trendRange, dashboardDate)
+  const maxTrendCount = Math.max(...applicationTrend.map((slot) => slot.applications), 1)
+  const sourceSummary = [
+    { source: 'job_board', label: 'Job Boards', value: applications.filter((item) => item.source === 'job_board').length, color: '#5d63e6' },
+    { source: 'social_media', label: 'Social Media', value: applications.filter((item) => item.source === 'social_media').length, color: '#8a7ef8' },
+    { source: 'referral', label: 'Referrals', value: applications.filter((item) => item.source === 'referral').length, color: '#f4b46a' },
+    { source: 'other', label: 'Other', value: applications.filter((item) => !['job_board', 'social_media', 'referral'].includes(item.source)).length, color: '#d6d9e6' },
+  ]
+  const totalSources = applications.length || 1
+  const statusSummary = [
+    { label: 'Open', value: openJobs, color: '#5d63e6' },
+    { label: 'Closed', value: Math.max(0, jobs.length - openJobs), color: '#f1b35c' },
+  ]
+  const statusTotal = statusSummary.reduce((total, entry) => total + entry.value, 0) || 1
   const visibleApplications = applications.filter((application) => {
     const matchesStatus = applicationFilter === 'all' || application.status === applicationFilter
     const query = searchQuery.trim().toLowerCase()
@@ -124,12 +205,23 @@ function EmployerDashboard() {
   const upcomingInterviews = interviews.slice(0, 4)
   const companyName = user?.company_name || 'Company workspace'
 
+  function addTodo(event) {
+    event.preventDefault()
+    const text = newTodo.trim()
+    if (!text) return
+    setTodos((current) => [
+      { id: `${Date.now()}-${Math.random()}`, text, completed: false },
+      ...current,
+    ])
+    setNewTodo('')
+  }
+
   return (
     <div className="employer-app-shell">
       <aside className="employer-sidebar" aria-label="Employer workspace">
-        <Link className="employer-brand" to="/" aria-label="JobConnect home">
-          <span className="employer-brand-mark" aria-hidden="true">J</span>
-          <span>JobConnect<span className="employer-brand-dot">.</span></span>
+        <Link className="employer-brand" to="/" aria-label="ProWork home">
+          <span className="employer-brand-mark" aria-hidden="true">P</span>
+          <span>ProWork<span className="employer-brand-dot">.</span></span>
         </Link>
         <div className="employer-company-switcher">
           <span className="company-avatar" aria-hidden="true">{companyName.charAt(0).toUpperCase()}</span>
@@ -144,6 +236,7 @@ function EmployerDashboard() {
           <a className={`employer-nav-link${activeSection === 'pipeline' ? ' active' : ''}`} href="#pipeline" onClick={() => setActiveSection('pipeline')}><span aria-hidden="true">⇢</span>Pipeline</a>
           <a className={`employer-nav-link${activeSection === 'analytics' ? ' active' : ''}`} href="#analytics" onClick={() => setActiveSection('analytics')}><span aria-hidden="true">▥</span>Analytics</a>
           <a className={`employer-nav-link${activeSection === 'interviews' ? ' active' : ''}`} href="#interviews" onClick={() => setActiveSection('interviews')}><span aria-hidden="true">▣</span>Interviews</a>
+          <a className={`employer-nav-link${activeSection === 'todos' ? ' active' : ''}`} href="#todos" onClick={() => setActiveSection('todos')}><span aria-hidden="true">☑</span>To do<span className="nav-count">{todos.filter((todo) => !todo.completed).length}</span></a>
           <p className="navigation-spacer">ACCOUNT</p>
           <a className={`employer-nav-link${activeSection === 'notifications' ? ' active' : ''}`} href="#notifications" onClick={() => setActiveSection('notifications')}><span aria-hidden="true">♧</span>Notifications</a>
           <Link className="employer-nav-link" to="/"><span aria-hidden="true">⌕</span>Browse jobs</Link>
@@ -196,36 +289,78 @@ function EmployerDashboard() {
               <section className="recruiter-stats-grid" aria-label="Hiring overview">
                 <article className="recruiter-stat-card">
                   <span className="recruiter-stat-icon violet" aria-hidden="true">▤</span>
-                  <span className="recruiter-stat-label">Active jobs</span>
-                  <strong>{openJobs}</strong>
-                  <small>{jobs.length} total listings</small>
-                </article>
-                <article className="recruiter-stat-card">
-                  <span className="recruiter-stat-icon blue" aria-hidden="true">♙</span>
-                  <span className="recruiter-stat-label">Total applicants</span>
+                  <span className="recruiter-stat-label">Total Applicants</span>
                   <strong>{applications.length}</strong>
                   <small>{pendingApplications} awaiting review</small>
                 </article>
                 <article className="recruiter-stat-card">
+                  <span className="recruiter-stat-icon blue" aria-hidden="true">♙</span>
+                  <span className="recruiter-stat-label">Scheduled Interviews</span>
+                  <strong>{interviews.length}</strong>
+                  <small>Proposed and accepted</small>
+                </article>
+                <article className="recruiter-stat-card">
                   <span className="recruiter-stat-icon green" aria-hidden="true">✓</span>
-                  <span className="recruiter-stat-label">Accepted candidates</span>
-                  <strong>{acceptedApplications}</strong>
-                  <small>Across all your roles</small>
+                  <span className="recruiter-stat-label">Accepted Candidates</span>
+                  <strong>{shortlistedCount}</strong>
+                  <small>{acceptedApplications} accepted</small>
                 </article>
                 <article className="recruiter-stat-card">
                   <span className="recruiter-stat-icon amber" aria-hidden="true">▣</span>
-                  <span className="recruiter-stat-label">Upcoming interviews</span>
-                  <strong>{interviews.length}</strong>
-                  <small>Scheduled and proposed</small>
+                  <span className="recruiter-stat-label">Open Jobs</span>
+                  <strong>{openJobs}</strong>
+                  <small>{jobs.length} active listings</small>
                 </article>
               </section>
 
               <div className="recruiter-overview-grid">
                 <section className="recruiter-panel analytics-panel" id="analytics">
                   <div className="recruiter-panel-heading">
-                    <div><span className="panel-icon" aria-hidden="true">▥</span><div><h2>Applications received</h2><p>Applicants across your job listings</p></div></div>
-                    <a className="text-action" href="#jobs">View jobs <span aria-hidden="true">→</span></a>
+                    <div><span className="panel-icon" aria-hidden="true">▥</span><div><h2>Applications Overview</h2><p>Applicants across your job listings</p></div></div>
+                    <div className="analytics-actions">
+                      <div className="trend-period-tabs" aria-label="Application chart period">
+                        {[
+                          ['today', 'Today'],
+                          ['week', 'Week'],
+                          ['month', 'Month'],
+                        ].map(([range, label]) => (
+                          <button
+                            type="button"
+                            key={range}
+                            className={trendRange === range ? 'active' : ''}
+                            aria-pressed={trendRange === range}
+                            onClick={() => setTrendRange(range)}
+                          >
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                      <a className="text-action" href="#jobs">View jobs <span aria-hidden="true">→</span></a>
+                    </div>
                   </div>
+                  {applications.length > 0 && (
+                    <>
+                      <div className="application-trend-chart" role="list" aria-label={`Applications and accepted candidates by ${trendRange}`}>
+                        {applicationTrend.map((slot) => (
+                          <div className="trend-slot" role="listitem" key={slot.key}>
+                            <div className="trend-bars" aria-hidden="true">
+                              <span className="trend-bar applications-bar" style={{ height: `${Math.max((slot.applications / maxTrendCount) * 100, slot.applications ? 3 : 0)}%` }} />
+                              <span className="trend-bar shortlisted-bar" style={{ height: `${Math.max((slot.shortlisted / maxTrendCount) * 100, slot.shortlisted ? 3 : 0)}%` }} />
+                            </div>
+                            <span>{slot.label}</span>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="chart-legend">
+                        <span><i className="legend-pending" /> Applications</span>
+                        <span><i className="legend-accepted" /> Accepted</span>
+                      </div>
+                    </>
+                  )}
+                  {applications.length === 0 && (
+                    <p className="panel-empty">Application activity will appear here when candidates apply.</p>
+                  )}
+                  {analytics?.jobs.length > 0 && <p className="chart-subheading">Applications by job listing</p>}
                   {analytics?.jobs.length ? (
                     <>
                       <div className="application-chart" role="list" aria-label="Application counts by job listing">
@@ -256,30 +391,119 @@ function EmployerDashboard() {
                   ) : <p className="panel-empty">Application activity will appear here when candidates apply.</p>}
                 </section>
 
-                <section className="recruiter-panel interview-panel" id="interviews">
-                  <div className="recruiter-panel-heading">
-                    <div><span className="panel-icon blue-panel-icon" aria-hidden="true">▣</span><div><h2>Upcoming interviews</h2><p>Your next candidate meetings</p></div></div>
-                    <a className="panel-more" href="#candidates" aria-label="View interview candidates">···</a>
-                  </div>
-                  {interviewsLoading ? <p className="panel-empty">Loading interviews…</p> : upcomingInterviews.length ? (
-                    <div className="upcoming-interview-list">
-                      {upcomingInterviews.map((interview) => {
-                        const application = applications.find((item) => item.id === interview.application_id)
-                        return (
-                          <article className="upcoming-interview-item" key={interview.id}>
-                            <span className="interview-time">{new Date(interview.scheduled_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</span>
-                            <div>
-                              <strong>{application?.job.title || 'Interview'}</strong>
-                              <span>{application?.applicant.full_name || 'Candidate'}</span>
-                            </div>
-                            <span className={`interview-status status-${interview.status}`}>{interview.status}</span>
-                          </article>
-                        )
-                      })}
+                <div className="recruiter-side-stack">
+                  <section className="recruiter-panel source-panel" aria-label="Application sources">
+                    <div className="recruiter-panel-heading">
+                      <div><span className="panel-icon blue-panel-icon" aria-hidden="true">▣</span><div><h2>Application received by source</h2><p>Traffic mix across channels</p></div></div>
                     </div>
-                  ) : <p className="panel-empty">No upcoming interviews. Interview invitations will show here.</p>}
-                  <a className="panel-footer-link" href="#candidates">Manage candidate interviews <span aria-hidden="true">→</span></a>
-                </section>
+                    <div className="source-breakdown" role="list">
+                      {sourceSummary.map((source) => (
+                        <div className="source-row" key={source.label} role="listitem">
+                          <div className="source-label-row">
+                            <span>{source.label}</span>
+                            <strong>{source.value}</strong>
+                          </div>
+                          <div className="source-track">
+                            <span style={{ width: `${(source.value / totalSources) * 100}%`, background: source.color }} />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    {!applications.length && (
+                      <p className="source-empty">Source data will appear as candidates apply.</p>
+                    )}
+                  </section>
+
+                  <section className="recruiter-panel status-panel" aria-label="Job status overview">
+                    <div className="recruiter-panel-heading">
+                      <div><span className="panel-icon green-panel-icon" aria-hidden="true">◔</span><div><h2>Job Status</h2><p>Current listing mix</p></div></div>
+                    </div>
+                    <div className="status-ring-wrap">
+                      <div
+                        className="status-ring"
+                        style={{
+                          background: `conic-gradient(${statusSummary.map((entry) => `${entry.color} ${((entry.value / statusTotal) * 100).toFixed(2)}%`).join(', ')})`,
+                        }}
+                        aria-label={`Open jobs ${openJobs}, closed jobs ${Math.max(0, jobs.length - openJobs)}`}
+                      >
+                        <div className="status-ring-inner">
+                          <strong>{jobs.length}</strong>
+                          <span>Total Jobs</span>
+                        </div>
+                      </div>
+                      <div className="status-legend">
+                        {statusSummary.map((entry) => (
+                          <span key={entry.label}><i style={{ background: entry.color }} /> {entry.label}</span>
+                        ))}
+                      </div>
+                    </div>
+                  </section>
+
+                  <section className="recruiter-panel interview-panel" id="interviews">
+                    <div className="recruiter-panel-heading">
+                      <div><span className="panel-icon blue-panel-icon" aria-hidden="true">▣</span><div><h2>Upcoming interviews</h2><p>Your next candidate meetings</p></div></div>
+                      <a className="panel-more" href="#candidates" aria-label="View interview candidates">···</a>
+                    </div>
+                    {interviewsLoading ? <p className="panel-empty">Loading interviews…</p> : upcomingInterviews.length ? (
+                      <div className="upcoming-interview-list">
+                        {upcomingInterviews.map((interview) => {
+                          const application = applications.find((item) => item.id === interview.application_id)
+                          return (
+                            <article className="upcoming-interview-item" key={interview.id}>
+                              <span className="interview-time">{new Date(interview.scheduled_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</span>
+                              <div>
+                                <strong>{application?.job.title || 'Interview'}</strong>
+                                <span>{application?.applicant.full_name || 'Candidate'}</span>
+                              </div>
+                              <span className={`interview-status status-${interview.status}`}>{interview.status}</span>
+                            </article>
+                          )
+                        })}
+                      </div>
+                    ) : <p className="panel-empty">No upcoming interviews. Interview invitations will show here.</p>}
+                    <a className="panel-footer-link" href="#candidates">Manage candidate interviews <span aria-hidden="true">→</span></a>
+                  </section>
+
+                  <section className="recruiter-panel todo-panel" id="todos">
+                    <div className="recruiter-panel-heading">
+                      <div><span className="panel-icon" aria-hidden="true">☑</span><div><h2>To Do</h2><p>Keep track of your hiring tasks</p></div></div>
+                      <span className="panel-total">{todos.filter((todo) => !todo.completed).length} left</span>
+                    </div>
+                    <form className="todo-form" onSubmit={addTodo}>
+                      <input
+                        aria-label="New to-do item"
+                        maxLength={120}
+                        onChange={(event) => setNewTodo(event.target.value)}
+                        placeholder="Add a task"
+                        value={newTodo}
+                      />
+                      <button type="submit" disabled={!newTodo.trim()} aria-label="Add task">＋</button>
+                    </form>
+                    {todos.length ? (
+                      <ul className="todo-list">
+                        {todos.map((todo) => (
+                          <li key={todo.id} className={todo.completed ? 'completed' : ''}>
+                            <label>
+                              <input
+                                type="checkbox"
+                                checked={todo.completed}
+                                onChange={() => setTodos((current) => current.map((item) => (
+                                  item.id === todo.id ? { ...item, completed: !item.completed } : item
+                                )))}
+                              />
+                              <span>{todo.text}</span>
+                            </label>
+                            <button
+                              type="button"
+                              aria-label={`Delete ${todo.text}`}
+                              onClick={() => setTodos((current) => current.filter((item) => item.id !== todo.id))}
+                            >×</button>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : <p className="todo-empty">Add a task to get started.</p>}
+                  </section>
+                </div>
 
                 <section className="recruiter-panel pipeline-panel" id="pipeline">
                   <div className="recruiter-panel-heading">
